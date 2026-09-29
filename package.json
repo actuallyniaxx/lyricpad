@@ -1,0 +1,21 @@
+{
+  "name": "lyricpad",
+  "productName": "Lyricpad",
+  "version": "1.0.0",
+  "description": "A minimal lyrics editor for Windows with a side-by-side rhyme dictionary",
+  "main": "main.js",
+  "author": "actuallyniaxx",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/actuallyniaxx/lyricpad.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-packager . Lyricpad --platform=win32 --arch=x64 --out=dist --overwrite --asar --ignore=^/dist --ignore=^/\\.github"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^33.4.11"
+  }
+}

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'" />
+  <title>Lyricpad</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="toolbar">
+      <div class="group">
+        <button class="tb" data-action="new" data-i18n-title="ttNew">
+          <svg viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M12 11v6M9 14h6"/></svg>
+          <span data-i18n="tbNew">New</span>
+        </button>
+        <button class="tb" data-action="open" data-i18n-title="ttOpen">
+          <svg viewBox="0 0 24 24"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>
+          <span data-i18n="tbOpen">Open</span>
+        </button>
+        <button class="tb" data-action="save" data-i18n-title="ttSave">
+          <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>
+          <span data-i18n="tbSave">Save</span>
+        </button>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="group seg" role="radiogroup">
+        <button class="tb icon" data-action="align-left" data-i18n-title="ttAlignLeft">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h10M4 14h16M4 18h10"/></svg>
+        </button>
+        <button class="tb icon" data-action="align-center" data-i18n-title="ttAlignCenter">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M7 10h10M4 14h16M7 18h10"/></svg>
+        </button>
+      </div>
+
+      <div class="spacer"></div>
+
+      <button class="tb icon" data-action="theme" data-i18n-title="ttTheme">
+        <svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+      <button class="tb accent" data-action="rhymes" data-i18n-title="ttRhymes">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M12 4v16"/></svg>
+        <span data-i18n="tbRhymes">Rhymes</span>
+      </button>
+    </header>
+
+    <main id="split">
+      <section id="editorPane">
+        <textarea id="editor" spellcheck="true" data-i18n-placeholder="phEditor" autofocus></textarea>
+      </section>
+
+      <div id="divider" data-i18n-title="ttDivider"></div>
+
+      <section id="rhymePane">
+        <div id="rhymeBar">
+          <button class="tb icon small" data-action="rh-back" data-i18n-title="ttBack">
+            <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+          </button>
+          <button class="tb icon small" data-action="rh-fwd" data-i18n-title="ttForward">
+            <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+          <form id="rhymeForm">
+            <input id="rhymeInput" type="text" data-i18n-placeholder="phWord" spellcheck="false" autocomplete="off" />
+          </form>
+          <span id="rhymeLoading" aria-hidden="true"></span>
+          <button class="tb icon small" data-action="rh-external" data-i18n-title="ttExternal">
+            <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+          </button>
+          <button class="tb icon small" data-action="rhymes" data-i18n-title="ttClose">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div id="rhymeHost">
+          <div id="rhymeMsg" hidden></div>
+        </div>
+      </section>
+      <div id="dragShield" hidden></div>
+    </main>
+
+    <footer id="status">
+      <span id="stFile"></span>
+      <span class="grow"></span>
+      <span id="stCount"></span>
+    </footer>
+  </div>
+
+  <div id="modal" hidden>
+    <form id="modalForm" class="card">
+      <h2 data-i18n="modalTitle"></h2>
+      <p data-i18n="modalText"></p>
+      <input id="modalInput" type="text" spellcheck="false" />
+      <p id="modalErr" class="err" hidden></p>
+      <div class="row">
+        <button type="button" class="btn" id="modalReset" data-i18n="modalReset"></button>
+        <span class="grow"></span>
+        <button type="button" class="btn" id="modalCancel" data-i18n="modalCancel"></button>
+        <button type="submit" class="btn primary" data-i18n="modalSave"></button>
+      </div>
+    </form>
+  </div>
+
+  <div id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
