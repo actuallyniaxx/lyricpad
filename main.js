@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron')
 const path = require('path');
 const fs = require('fs');
 const { strings, LANGS, tr } = require('./i18n');
+const updater = require('./updater');
 
 const APP_NAME = 'Lyricpad';
 
@@ -23,6 +24,9 @@ const defaults = {
   rhymeUrl: RHYME_SERVICES[0].url,
   bounds: { width: 1200, height: 800 },
   maximized: false,
+  autoUpdate: true,
+  lastUpdateCheck: 0,
+  skipVersion: null,
 };
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...defaults };
@@ -212,8 +216,37 @@ function buildMenu() {
         { label: 'DevTools', role: 'toggleDevTools', accelerator: 'CmdOrCtrl+Shift+I', visible: false },
       ],
     },
+    {
+      label: t('mHelp'),
+      submenu: [
+        { label: t('mCheckUpdates'), click: () => updater.check() },
+        {
+          label: t('mAutoUpdate'),
+          type: 'checkbox',
+          checked: settings.autoUpdate !== false,
+          click: (item) => {
+            settings.autoUpdate = item.checked;
+            saveSettings();
+          },
+        },
+        { type: 'separator' },
+        { label: t('mGitHub'), click: () => shell.openExternal('https://github.com/actuallyniaxx/lyricpad') },
+        { label: t('mAbout'), click: showAbout },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function showAbout() {
+  dialog.showMessageBox(win, {
+    type: 'info',
+    title: APP_NAME,
+    message: `${APP_NAME} ${app.getVersion()}`,
+    detail: t(updater.isPortable() ? 'aboutPortable' : 'aboutInstalled') + '\n\ngithub.com/actuallyniaxx/lyricpad\nMIT License',
+    buttons: ['OK'],
+    noLink: true,
+  });
 }
 
 function setLang(lang) {
@@ -411,6 +444,13 @@ if (!gotLock) {
   app.whenReady().then(() => {
     loadSettings();
     createWindow();
+    updater.init({
+      getWin: () => win,
+      getSettings: () => settings,
+      saveSettings,
+      t,
+      onStatus: (text) => win?.webContents.send('update-status', text),
+    });
     const f = fileFromArgv(process.argv);
     if (f) win.webContents.once('did-finish-load', () => win.webContents.send('open-path', f));
   });

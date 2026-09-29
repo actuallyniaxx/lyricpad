@@ -235,3 +235,6 @@ body.loading #rhymeLoading { visibility: visible; animation: spin .7s linear inf
   .tb span { display: none; }
   .tb:not(.icon) { width: 30px; padding: 0; justify-content: center; }
 }
+
+#stUpdate { color: var(--accent); }
+:root:not([data-theme="dark"]) #stUpdate { color: var(--accent); }

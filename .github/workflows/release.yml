@@ -1,5 +1,11 @@
 name: Release
 
+# Push a tag like v1.2.0 and this builds Lyricpad for Windows and publishes
+# a GitHub Release with:
+#   - Lyricpad-<version>-win-x64.msi            (installer, auto-updates)
+#   - Lyricpad-<version>-win-x64-portable.zip   (portable, no install)
+# The app version is taken from the tag, so you don't need to edit package.json.
+
 on:
   push:
     tags:
@@ -12,6 +18,9 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -22,21 +31,38 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build:win
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
-      - name: Zip
+      - name: Read version
+        id: ver
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Build MSI installer
+        run: npm run build:win
+
+      - name: Build portable ZIP
         shell: pwsh
-        run: Compress-Archive -Path "dist/Lyricpad-win32-x64/*" -DestinationPath "Lyricpad-win-x64.zip"
+        run: |
+          # The "portable" marker tells the updater not to try installing an MSI.
+          Set-Content -Path "dist/win-unpacked/portable" -Value "This copy of Lyricpad is portable."
+          Compress-Archive -Path "dist/win-unpacked/*" -DestinationPath "dist/Lyricpad-${{ steps.ver.outputs.version }}-win-x64-portable.zip"
 
-      - name: Upload artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Lyricpad-win-x64
-          path: Lyricpad-win-x64.zip
+          name: Lyricpad-${{ steps.ver.outputs.version }}-win-x64
+          path: |
+            dist/*.msi
+            dist/*-portable.zip
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: Lyricpad-win-x64.zip
+          name: Lyricpad ${{ steps.ver.outputs.version }}
+          files: |
+            dist/*.msi
+            dist/*-portable.zip
           generate_release_notes: true

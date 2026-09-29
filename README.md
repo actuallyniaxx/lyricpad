@@ -15,12 +15,27 @@ Write on the left, look up rhymes on the right. Select a word, right-click, **Lo
 - **Right-click → Look up rhymes** on any word. If you select a whole line, it uses the last word, since that's the one that rhymes.
 - **English and Spanish UI.**
 - Line and word count, adjustable font size, and it remembers your theme, layout and window size.
+- **Automatic updates** from GitHub Releases.
 
 ## Download
 
-Grab the latest `Lyricpad-win-x64.zip` from [Releases](../../releases), unzip it anywhere and run `Lyricpad.exe`.
+Grab the latest version from [Releases](../../releases/latest). There are two flavours:
+
+| File | What it is |
+| --- | --- |
+| `Lyricpad-x.y.z-win-x64.msi` | **Installer.** Adds Start menu and desktop shortcuts, no admin rights needed, and **updates itself**. |
+| `Lyricpad-x.y.z-win-x64-portable.zip` | **Portable.** Unzip anywhere (even a USB stick) and run `Lyricpad.exe`. It tells you when there's a new version, but you replace the folder yourself. |
 
 The app isn't code-signed, so Windows SmartScreen will probably complain the first time. Click **More info → Run anyway**.
+
+### Updates
+
+On startup (at most every 6 hours), Lyricpad asks GitHub whether there's a newer release. If there is:
+
+- **Installed version**: it downloads the new `.msi`, checks it against the checksum GitHub publishes, and installs it when you close Lyricpad (or right away, if you say so). Unsaved work still gets the usual "save changes?" prompt.
+- **Portable version**: it opens the download page.
+
+You can check manually with **Help → Check for updates…**, turn automatic checks off, or skip a specific version. The check is a single anonymous request to the public GitHub API. No accounts, no tracking.
 
 ## Keyboard shortcuts
 
@@ -50,14 +65,17 @@ You need [Node.js](https://nodejs.org) 18 or newer.
 ```bash
 npm install
 npm start           # run in development
-npm run build:win   # package for Windows x64 into dist/
+npm run build:dir   # unpacked Windows build in dist/win-unpacked
+npm run build:win   # MSI installer (needs Windows, WiX is downloaded automatically)
 ```
 
-Pushing a tag like `v1.0.1` builds the Windows package on GitHub Actions and attaches it to a release automatically.
+### Releasing
+
+Push a tag like `v1.2.0`. GitHub Actions builds the MSI and the portable ZIP on Windows and publishes them as a release. The app version comes from the tag, so there's no need to edit `package.json` by hand.
 
 ## Español
 
-Lyricpad es un editor de letras minimalista para Windows con un diccionario de rimas al lado del texto. Seleccionas una palabra, clic derecho, **Consultar rimas**, y listo. La interfaz está en inglés y en español: el idioma se cambia en **Ver → Idioma**.
+Lyricpad es un editor de letras minimalista para Windows con un diccionario de rimas al lado del texto. Seleccionas una palabra, clic derecho, **Consultar rimas**, y listo. La interfaz está en inglés y en español: el idioma se cambia en **Ver → Idioma**. Hay versión instalable (`.msi`, se actualiza sola) y portable (`.zip`).
 
 ## License
 

@@ -384,6 +384,7 @@ window.api.onRequestClose(async () => {
 });
 
 window.api.onLang((lang, strings) => applyI18n(lang, strings));
+window.api.onUpdateStatus((text) => ($('#stUpdate').textContent = text));
 
 // ---------- Startup ----------
 (async () => {
