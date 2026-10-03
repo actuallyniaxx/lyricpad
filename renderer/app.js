@@ -30,6 +30,9 @@ function applyI18n(lang, strings) {
 }
 let webview = null;
 let currentRhymeUrl = '';
+let hasPath = false; // the document lives in a file on disk
+let analysis = null; // last result of Prosody.analyze()
+const hl = $('#hl');
 
 // ---------- Utilities ----------
 function toast(msg) {
@@ -56,6 +59,32 @@ function refreshDirty() {
   if (d !== lastDirty) {
     lastDirty = d;
     window.api.setDirty(d);
+    if (!d) {
+      clearTimeout(draftTimer);
+      window.api.clearDraft();
+    }
+  }
+}
+
+// ---------- Autosave and recovery ----------
+let draftTimer = null;
+let autosaveTimer = null;
+
+function scheduleSaves() {
+  // Safety net: mirror unsaved text to a recovery file shortly after typing stops
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    if (isDirty()) window.api.saveDraft(editor.value);
+  }, 1000);
+  // Real autosave: only for documents that already have a file
+  clearTimeout(autosaveTimer);
+  if (settings.autosave !== false && hasPath) {
+    autosaveTimer = setTimeout(async () => {
+      if (!isDirty() || !hasPath || settings.autosave === false) return;
+      const ok = await saveDoc(false, true);
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      $('#stSave').textContent = ok ? t('autosaved', { time }) : t('autosaveFail');
+    }, 3000);
   }
 }
 
@@ -63,7 +92,13 @@ function refreshCount() {
   const v = editor.value;
   const lines = v.length ? v.split('\n').length : 0;
   const words = (v.match(/[\p{L}\p{N}'’-]+/gu) || []).length;
-  $('#stCount').textContent = `${lines} ${t(lines === 1 ? 'line' : 'lines')} · ${words} ${t(words === 1 ? 'word' : 'words')}`;
+  let txt = `${lines} ${t(lines === 1 ? 'line' : 'lines')} · ${words} ${t(words === 1 ? 'word' : 'words')}`;
+  if (analysis && analysis.stats.lyricLines) {
+    const st = analysis.stats;
+    if (settings.showSyllables !== false) txt += ` · ⌀ ${st.avgSyl.toFixed(1)} ${t('sylAbbr')}`;
+    if (settings.showRhymes !== false) txt += ` · ${t('rhymeAbbr')} ${Math.round(st.density * 100)}%`;
+  }
+  $('#stCount').textContent = txt;
 }
 
 function setFileName(name) {
@@ -77,9 +112,74 @@ function loadIntoEditor(content, name) {
   setFileName(name);
   editor.setSelectionRange(0, 0);
   editor.scrollTop = 0;
-  refreshCount();
+  clearTimeout(draftTimer);
+  clearTimeout(autosaveTimer);
+  $('#stSave').textContent = '';
+  renderOverlay();
   refreshDirty();
   editor.focus();
+}
+
+// ---------- Syllables and rhymes layer ----------
+// The textarea can't colour its own text, so an identical block of text sits
+// right behind it and carries the highlights and the numbers in the margins.
+function renderOverlay() {
+  const showSyl = settings.showSyllables !== false;
+  const showRhy = settings.showRhymes !== false;
+  body.classList.toggle('gutter', showSyl || showRhy);
+  if (!showSyl && !showRhy) {
+    analysis = null;
+    hl.replaceChildren();
+    refreshCount();
+    return;
+  }
+  analysis = window.Prosody.analyze(editor.value, { internal: settings.internalRhymes !== false });
+  const frag = document.createDocumentFragment();
+  for (const l of analysis.lines) {
+    const div = document.createElement('div');
+    div.className = 'ln';
+    if (showSyl && l.syl) div.dataset.syl = l.syl;
+    if (showRhy) {
+      if (l.letter) div.dataset.letter = l.letter + (l.full ? ' ≡' : '');
+      const endRange = l.ranges.find((r) => r.cls !== 'int' && r.cls !== 'ext');
+      if (endRange) div.classList.add(`c${endRange.color}`);
+      let pos = 0;
+      for (const r of l.ranges) {
+        if (r.start < pos) continue;
+        if (r.start > pos) div.append(l.text.slice(pos, r.start));
+        const span = document.createElement('span');
+        span.className = `r ${r.cls} c${r.color}`;
+        span.dataset.key = r.key;
+        span.textContent = l.text.slice(r.start, r.end);
+        div.append(span);
+        pos = r.end;
+      }
+      if (pos < l.text.length) div.append(l.text.slice(pos));
+    } else if (l.text) {
+      div.append(l.text);
+    }
+    frag.append(div);
+  }
+  hl.replaceChildren(frag);
+  syncScroll();
+  markActive();
+  refreshCount();
+}
+
+function syncScroll() {
+  hl.style.transform = `translateY(${-editor.scrollTop}px)`;
+}
+
+// Light up every rhyme that shares its sound with the line the cursor is on
+let activeKey = null;
+function markActive() {
+  if (!analysis) return;
+  const lineNo = editor.value.slice(0, editor.selectionStart).split('\n').length - 1;
+  const key = analysis.lines[lineNo]?.group || null;
+  if (key === activeKey && !hl.querySelector('.r.on') === !key) return;
+  activeKey = key;
+  hl.querySelectorAll('.r.on').forEach((el) => el.classList.remove('on'));
+  if (key) hl.querySelectorAll('.r').forEach((el) => el.dataset.key === key && el.classList.add('on'));
 }
 
 // Palabra bajo el cursor (la usa el menú contextual si no hay selección)
@@ -106,23 +206,31 @@ async function guardUnsaved() {
 async function newDoc() {
   if (!(await guardUnsaved())) return;
   await window.api.newDoc();
+  hasPath = false;
   loadIntoEditor('', null);
 }
 
 async function openDoc(givenPath) {
   if (!(await guardUnsaved())) return;
   const res = await window.api.openDoc(givenPath || null);
-  if (res) loadIntoEditor(res.content, res.name);
+  if (res) {
+    hasPath = true;
+    loadIntoEditor(res.content, res.name);
+  }
 }
 
-async function saveDoc(saveAs) {
+async function saveDoc(saveAs, silent) {
   const content = editor.value;
-  const res = await window.api.saveDoc(content, !!saveAs);
+  const res = await window.api.saveDoc(content, !!saveAs, !!silent);
   if (!res) return false;
+  hasPath = true;
   savedContent = content;
   setFileName(res.name);
   refreshDirty();
-  toast(t('saved'));
+  if (!silent) {
+    $('#stSave').textContent = '';
+    toast(t('saved'));
+  }
   return true;
 }
 
@@ -138,6 +246,7 @@ function toggleTheme() {
 
 function applyAlign(a) {
   editor.classList.toggle('center', a === 'center');
+  hl.classList.toggle('center', a === 'center');
   document.querySelector('[data-action="align-left"]').classList.toggle('on', a !== 'center');
   document.querySelector('[data-action="align-center"]').classList.toggle('on', a === 'center');
 }
@@ -318,7 +427,26 @@ const actions = {
   align: (a) => setAlign(a),
   rhymes: () => setRhymesOpen(!body.classList.contains('rhymes')),
   toggleRhymes: () => setRhymesOpen(!body.classList.contains('rhymes')),
-  rhymeSelection: () => lookupRhymes(lastWord(window.__wordAtCaret())),
+  rhymeSelection: () => {
+    let w = lastWord(window.__wordAtCaret());
+    if (!w) {
+      // Nothing under the cursor: use the last word of the closest line above
+      const before = editor.value.slice(0, editor.selectionStart).split('\n');
+      for (let i = before.length - 1; i >= 0 && !w; i--) w = lastWord(before[i]);
+    }
+    lookupRhymes(w);
+  },
+  toggleSetting: (key) => {
+    const value = settings[key] === false; // undefined counts as on
+    patchSettings({ [key]: value });
+    if (key === 'autosave') {
+      $('#stSave').textContent = '';
+      if (value) scheduleSaves();
+      else clearTimeout(autosaveTimer);
+    } else {
+      renderOverlay();
+    }
+  },
   rhymeWord: (w) => lookupRhymes(w),
   setRhymeUrl: (url) => {
     patchSettings({ rhymeUrl: url });
@@ -356,8 +484,13 @@ $('#rhymeForm').addEventListener('submit', (e) => {
 
 // ---------- Editor ----------
 editor.addEventListener('input', () => {
-  refreshCount();
+  renderOverlay();
   refreshDirty();
+  scheduleSaves();
+});
+editor.addEventListener('scroll', syncScroll);
+document.addEventListener('selectionchange', () => {
+  if (document.activeElement === editor) markActive();
 });
 
 editor.addEventListener('keydown', (e) => {
@@ -377,7 +510,13 @@ window.addEventListener('drop', (e) => {
   if (p) openDoc(p);
 });
 
-window.api.onOpenPath((p) => openDoc(p));
+// Wait for startup (and any recovery prompt) before opening a file passed to the app
+let startupDone;
+const startup = new Promise((r) => (startupDone = r));
+window.api.onOpenPath(async (p) => {
+  await startup;
+  openDoc(p);
+});
 
 window.api.onRequestClose(async () => {
   if (await guardUnsaved()) window.api.forceClose();
@@ -395,6 +534,17 @@ window.api.onUpdateStatus((text) => ($('#stUpdate').textContent = text));
   applyFont(settings.fontSize);
   root.style.setProperty('--ratio', settings.splitRatio);
   if (settings.rhymesOpen) setRhymesOpen(true);
-  refreshCount();
+  renderOverlay();
   editor.focus();
+
+  // Unsaved work left over from a crash or a power cut?
+  const draft = await window.api.recoverDraft();
+  if (draft) {
+    hasPath = draft.hasPath;
+    loadIntoEditor(draft.content, draft.name);
+    savedContent = draft.disk; // what's on disk, so the recovered text counts as unsaved
+    refreshDirty();
+    window.api.saveDraft(editor.value); // keep the net up until it's really saved
+  }
+  startupDone();
 })();

@@ -49,7 +49,11 @@
 
     <main id="split">
       <section id="editorPane">
-        <textarea id="editor" spellcheck="true" data-i18n-placeholder="phEditor" autofocus></textarea>
+        <div id="editorWrap">
+          <!-- Painted behind the text: rhyme colours and the numbers in the margins -->
+          <div id="backdrop" aria-hidden="true"><div id="hl"></div></div>
+          <textarea id="editor" spellcheck="true" data-i18n-placeholder="phEditor" autofocus></textarea>
+        </div>
       </section>
 
       <div id="divider" data-i18n-title="ttDivider"></div>
@@ -83,6 +87,7 @@
     <footer id="status">
       <span id="stFile"></span>
       <span class="grow"></span>
+      <span id="stSave"></span>
       <span id="stUpdate"></span>
       <span id="stCount"></span>
     </footer>
@@ -105,6 +110,7 @@
 
   <div id="toast" hidden></div>
 
+  <script src="prosody.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

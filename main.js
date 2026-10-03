@@ -27,6 +27,10 @@ const defaults = {
   autoUpdate: true,
   lastUpdateCheck: 0,
   skipVersion: null,
+  autosave: true,
+  showSyllables: true,
+  showRhymes: true,
+  internalRhymes: true,
 };
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...defaults };
@@ -52,6 +56,38 @@ function saveSettings() {
 }
 
 const t = (key, vars) => tr(settings.lang, key, vars);
+
+// ---------- Recovery draft ----------
+// While there are unsaved changes, the text is mirrored to a small file in the
+// app's data folder. It is removed whenever the document is saved, closed on
+// purpose or replaced, so it only survives a crash, a kill or a power cut.
+const draftPath = () => path.join(app.getPath('userData'), 'recovery.json');
+
+function writeDraft(content) {
+  try {
+    const tmp = `${draftPath()}.tmp`;
+    fs.mkdirSync(path.dirname(tmp), { recursive: true });
+    fs.writeFileSync(tmp, JSON.stringify({ content, path: currentPath, savedAt: Date.now() }));
+    fs.renameSync(tmp, draftPath()); // atomic: never leaves a half-written draft
+  } catch (e) {
+    console.error('Could not write recovery draft', e);
+  }
+}
+
+function clearDraft() {
+  try {
+    fs.rmSync(draftPath(), { force: true });
+  } catch {}
+}
+
+function readDraft() {
+  try {
+    const d = JSON.parse(fs.readFileSync(draftPath(), 'utf8'));
+    return typeof d.content === 'string' && d.content.length ? d : null;
+  } catch {
+    return null;
+  }
+}
 
 // ---------- Document state ----------
 let win = null;
@@ -96,6 +132,9 @@ function createWindow() {
   });
   if (settings.maximized) win.maximize();
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // Keep our own title (file name + unsaved dot) instead of the page's <title>
+  win.on('page-title-updated', (e) => e.preventDefault());
+  updateTitle();
   win.once('ready-to-show', () => win.show());
   applySpellcheckLang();
 
@@ -136,6 +175,12 @@ function buildMenu() {
         { type: 'separator' },
         { label: t('mSave'), accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { label: t('mSaveAs'), accelerator: 'CmdOrCtrl+Shift+S', click: () => send('saveAs') },
+        {
+          label: t('mAutosave'),
+          type: 'checkbox',
+          checked: settings.autosave !== false,
+          click: () => send('toggleSetting', 'autosave'),
+        },
         { type: 'separator' },
         { label: t('mQuit'), accelerator: 'Alt+F4', click: () => win?.close() },
       ],
@@ -178,6 +223,28 @@ function buildMenu() {
           checked: settings.align === 'center',
           accelerator: 'CmdOrCtrl+E',
           click: () => send('align', 'center'),
+        },
+        { type: 'separator' },
+        {
+          label: t('mSyllables'),
+          type: 'checkbox',
+          checked: settings.showSyllables !== false,
+          accelerator: 'CmdOrCtrl+Shift+Y',
+          click: () => send('toggleSetting', 'showSyllables'),
+        },
+        {
+          label: t('mRhymeColors'),
+          type: 'checkbox',
+          checked: settings.showRhymes !== false,
+          accelerator: 'CmdOrCtrl+Shift+H',
+          click: () => send('toggleSetting', 'showRhymes'),
+        },
+        {
+          label: t('mInternalRhymes'),
+          type: 'checkbox',
+          checked: settings.internalRhymes !== false,
+          enabled: settings.showRhymes !== false,
+          click: () => send('toggleSetting', 'internalRhymes'),
         },
         { type: 'separator' },
         {
@@ -267,7 +334,9 @@ ipcMain.handle('settings:get', () => ({
 }));
 
 ipcMain.handle('settings:set', (_e, patch) => {
-  const menuRelevant = ['theme', 'align', 'rhymesOpen', 'rhymeUrl'].some(
+  const menuRelevant = [
+    'theme', 'align', 'rhymesOpen', 'rhymeUrl', 'autosave', 'showSyllables', 'showRhymes', 'internalRhymes',
+  ].some(
     (k) => k in patch && patch[k] !== settings[k]
   );
   delete patch.lang; // language only changes through setLang
@@ -284,7 +353,51 @@ ipcMain.handle('doc:setDirty', (_e, value) => {
   updateTitle();
 });
 
+ipcMain.handle('draft:save', (_e, content) => writeDraft(String(content)));
+ipcMain.handle('draft:clear', () => clearDraft());
+
+// Called once at startup: offers to bring back unsaved work from last time
+ipcMain.handle('draft:recover', async () => {
+  const d = readDraft();
+  if (!d) return null;
+  let disk = null;
+  if (d.path) {
+    try {
+      disk = readText(d.path);
+    } catch {
+      d.path = null; // the file is gone: recover as an untitled document
+    }
+  }
+  if (disk !== null && disk === d.content) {
+    clearDraft(); // nothing was actually lost
+    return null;
+  }
+  const when = new Date(d.savedAt || Date.now()).toLocaleString(settings.lang === 'es' ? 'es-ES' : 'en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  const name = d.path ? path.basename(d.path) : t('untitled');
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'question',
+    title: APP_NAME,
+    message: t('recTitle'),
+    detail: t('recDetail', { name, when }),
+    buttons: [t('recRecover'), t('recDiscard')],
+    defaultId: 0,
+    cancelId: 0, // closing the dialog must never throw the text away
+    noLink: true,
+  });
+  if (response !== 0) {
+    clearDraft();
+    return null;
+  }
+  currentPath = d.path || null;
+  updateTitle();
+  return { content: d.content, name: d.path ? path.basename(d.path) : null, disk: disk ?? '', hasPath: !!d.path };
+});
+
 ipcMain.handle('doc:new', () => {
+  clearDraft();
   currentPath = null;
   dirty = false;
   updateTitle();
@@ -303,6 +416,7 @@ ipcMain.handle('doc:open', async (_e, givenPath) => {
   }
   try {
     const content = readText(p);
+    clearDraft();
     currentPath = p;
     dirty = false;
     updateTitle();
@@ -313,8 +427,9 @@ ipcMain.handle('doc:open', async (_e, givenPath) => {
   }
 });
 
-ipcMain.handle('doc:save', async (_e, content, saveAs) => {
+ipcMain.handle('doc:save', async (_e, content, saveAs, silent) => {
   let p = currentPath;
+  if (silent && !p) return null; // autosave never opens a dialog
   if (!p || saveAs) {
     const res = await dialog.showSaveDialog(win, {
       title: t('dSaveTitle'),
@@ -326,12 +441,13 @@ ipcMain.handle('doc:save', async (_e, content, saveAs) => {
   }
   try {
     fs.writeFileSync(p, content, 'utf8');
+    clearDraft();
     currentPath = p;
     dirty = false;
     updateTitle();
     return { path: p, name: path.basename(p) };
   } catch (err) {
-    dialog.showErrorBox(t('dSaveFail'), `${p}\n\n${err.message}`);
+    if (!silent) dialog.showErrorBox(t('dSaveFail'), `${p}\n\n${err.message}`);
     return null;
   }
 });
@@ -352,6 +468,7 @@ ipcMain.handle('doc:confirmDiscard', async () => {
 });
 
 ipcMain.handle('app:forceClose', () => {
+  clearDraft(); // the user either saved or chose not to
   allowClose = true;
   win?.close();
 });

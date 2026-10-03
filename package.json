@@ -1,7 +1,7 @@
 {
   "name": "lyricpad",
   "productName": "Lyricpad",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A minimal lyrics editor for Windows with a side-by-side rhyme dictionary",
   "main": "main.js",
   "author": "actuallyniaxx",
@@ -13,7 +13,8 @@
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win msi --x64 --publish never",
-    "build:dir": "electron-builder --win dir --x64 --publish never"
+    "build:dir": "electron-builder --win dir --x64 --publish never",
+    "test": "node test/prosody.test.js"
   },
   "devDependencies": {
     "electron": "^33.4.11",
@@ -22,7 +23,7 @@
   "build": {
     "appId": "com.actuallyniaxx.lyricpad",
     "productName": "Lyricpad",
-    "copyright": "Copyright Ã‚Â© 2026 actuallyniaxx",
+    "copyright": "Copyright Ãƒâ€šÃ‚Â© 2026 actuallyniaxx",
     "directories": {
       "output": "dist",
       "buildResources": "build"
