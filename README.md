@@ -55,7 +55,7 @@ The app isn't code-signed, so Windows SmartScreen will probably complain the fir
 
 ### Updates
 
-On startup (at most every 6 hours), Lyricpad asks GitHub whether there's a newer release. If there is:
+Every time it starts (and every few hours while it stays open), Lyricpad asks GitHub whether there's a newer release. If there is:
 
 - **Installed version**: it downloads the new `.msi`, checks it against the checksum GitHub publishes, and installs it when you close Lyricpad (or right away, if you say so). Unsaved work still gets the usual "save changes?" prompt.
 - **Portable version**: it opens the download page.

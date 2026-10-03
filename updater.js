@@ -16,12 +16,13 @@ const fs = require('fs');
 const REPO = 'actuallyniaxx/lyricpad';
 // Overridable for testing against a local mock server.
 const API_URL = process.env.LYRICPAD_UPDATE_URL || `https://api.github.com/repos/${REPO}/releases/latest`;
-const AUTO_CHECK_DELAY_MS = 8000;
-const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // at most every 6 h
+const AUTO_CHECK_DELAY_MS = 3000; // shortly after every start
+const AUTO_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // and every 3 h while it stays open
 
 let ctx = null; // { getWin, getSettings, saveSettings, t, onStatus }
 let busy = false;
 let pendingInstaller = null; // path of a downloaded .msi waiting for app exit
+let dismissedVersion = null; // "Later" was chosen for this version: don't nag again until restart
 
 // ---------- Helpers ----------
 function parseVersion(v) {
@@ -120,14 +121,16 @@ async function download(asset, onProgress) {
 }
 
 function launchInstaller(msiPath) {
-  // Give Lyricpad a moment to fully exit so no files are in use, then run the
-  // MSI with a progress bar only. The MSI restarts Lyricpad when it's done.
-  const cmd = `ping -n 3 127.0.0.1 >nul & msiexec /i "${msiPath}" /passive`;
+  // Run the MSI exactly as if the user had double-clicked it:
+  // - msiexec is started directly (no cmd.exe, so no console window flashes);
+  // - no /passive or /quiet: the installer only relaunches Lyricpad when it
+  //   runs with its normal UI level, and it has no dialogs to click anyway.
+  // By the time msiexec reaches the file-copy phase Lyricpad has already
+  // exited, since this is called while the app is quitting.
   try {
-    const child = spawn('cmd.exe', ['/d', '/s', '/c', cmd], {
+    const child = spawn('msiexec.exe', ['/i', msiPath, '/norestart'], {
       detached: true,
       stdio: 'ignore',
-      windowsHide: true,
     });
     child.on('error', (e) => console.error('Could not start installer:', e.message));
     child.unref();
@@ -168,8 +171,8 @@ async function check({ manual }) {
       return;
     }
 
-    // Respect "skip this version" on automatic checks only
-    if (!manual && getSettings().skipVersion === latest.version) return;
+    // Respect "skip this version" and "later" on automatic checks only
+    if (!manual && (getSettings().skipVersion === latest.version || dismissedVersion === latest.version)) return;
 
     const portable = isPortable() || !latest.msi;
     const notes = latest.notes ? `\n\n${latest.notes.slice(0, 600)}${latest.notes.length > 600 ? '…' : ''}` : '';
@@ -192,7 +195,10 @@ async function check({ manual }) {
       saveSettings();
       return;
     }
-    if (response !== 0) return;
+    if (response !== 0) {
+      dismissedVersion = latest.version;
+      return;
+    }
 
     if (portable) {
       shell.openExternal(latest.pageUrl);
@@ -272,11 +278,11 @@ async function promptInstallNow(version) {
 
 function init(context) {
   ctx = context;
-  const s = ctx.getSettings();
-  if (s.autoUpdate === false) return;
-  const last = Number(s.lastUpdateCheck) || 0;
-  if (Date.now() - last < AUTO_CHECK_INTERVAL_MS && !process.env.LYRICPAD_UPDATE_URL) return;
-  setTimeout(() => check({ manual: false }), AUTO_CHECK_DELAY_MS);
+  const auto = () => {
+    if (ctx.getSettings().autoUpdate !== false) check({ manual: false });
+  };
+  setTimeout(auto, AUTO_CHECK_DELAY_MS);
+  setInterval(auto, AUTO_CHECK_INTERVAL_MS);
 }
 
 module.exports = { init, check: () => check({ manual: true }), compareVersions, isPortable };
