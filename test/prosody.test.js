@@ -66,5 +66,24 @@ eq('internal "pasa"', B[2].ranges.some((r) => r.cls === 'int'), true);
 const C = P.analyze('tengo la pena negra\nvengo la cena lenta').lines;
 eq('full verse', [C[0].full, C[1].full], [true, true]);
 
+// --- stress pattern (x = stressed, . = unstressed), merged vowels count once
+const pat = (t) => P.analyzeLine(t).beats.map((b) => (b.stressed ? 'x' : '.')).join('');
+eq('beats lugar', pat('En un lugar de la Mancha'), '...x..x.');
+eq('beats sinalefa', pat('de cuyo nombre no quiero acordarme'), '.x.x.xx..x.');
+eq('beats count = syllables', ['mi amor está aquí', 'tú y yo', 'al garito ese de mierda'].map((t) => P.analyzeLine(t).beats.length === P.analyzeLine(t).syl), [true, true, true]);
+eq('beats accent mark', pat('tú me das'), 'x.x');
+
+// --- repeated words
+const R = P.analyze(song);
+eq('garito repeated', R.repeated.get('garito'), 3);
+eq('garito marks', R.lines[0].repeats.length + R.lines[2].repeats.length + R.lines[3].repeats.length, 3);
+eq('chorus line twice counts once', R.repeated.has('noche'), false);
+eq('filler ignored', R.repeated.has('para') || R.repeated.has('las'), false);
+const R2 = P.analyze('la calle me llama\nvuelvo a la calle\n\notra cosa distinta');
+eq('twice in a row', R2.repeated.get('calle'), 2);
+const R3 = P.analyze('tengo un plan\nuno\ndos\ntres\ncuatro\notro plan distinto');
+eq('twice but far apart', R3.repeated.size, 0);
+eq('plural folds', P.analyze('un garito\ndos garitos\ntres garitos').repeated.get('garito'), 3);
+
 console.log(fail ? `${fail} of ${n} FAILED` : `all ${n} passed`);
 process.exit(fail ? 1 : 0);

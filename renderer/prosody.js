@@ -28,6 +28,20 @@
     ).split(' ')
   );
 
+  // Words that carry no stress of their own in speech (articles, short
+  // prepositions, conjunctions, clitic pronouns, possessives). With a written
+  // accent (tú, mí, qué, más) they are different words and do carry stress.
+  const UNSTRESSED = new Set(
+    (
+      'el la los las lo un unos unas al del de a en con por para sin sobre tras desde hasta entre hacia ante bajo ' +
+      'y e o u ni que pero mas sino si porque aunque pues como cuando donde mientras ' +
+      'me te se nos os le les mi mis tu tus su sus nuestro nuestra nuestros nuestras vuestro vuestra tan medio'
+    ).split(' ')
+  );
+
+  // lower case, no accent marks
+  const plain = (w) => w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
   // ---------- Word level ----------
 
   // Vowel nuclei of a word, in order. Each nucleus is one syllable.
@@ -158,10 +172,25 @@
     // merge into one (sinalefa), unless strong punctuation sits in between.
     let syl = 0;
     const seq = []; // every syllable of the line: { v, at: char index in the line, w: word index }
+    // Spoken syllables with their stress, for the rhythm pattern:
+    // { at: char index of the vowel, stressed }. Merged vowels count once.
+    const beats = [];
+    let merge = false; // the previous word ended in a vowel that joins this one
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
       syl += w.syl;
       w.nuc.forEach((x) => seq.push({ v: x.v, at: w.start + x.pos, w: i }));
+      const tonic = !UNSTRESSED.has(w.text.toLowerCase());
+      w.nuc.forEach((x, k) => {
+        const b = { at: w.start + x.pos, stressed: tonic && k === w.stress };
+        if (k === 0 && merge && beats.length) {
+          const prev = beats[beats.length - 1];
+          // one syllable for both vowels: stressed if either is, drawn under the stressed one
+          if (b.stressed || !prev.stressed) prev.at = b.at;
+          prev.stressed = prev.stressed || b.stressed;
+        } else beats.push(b);
+      });
+      merge = false;
       const nx = words[i + 1];
       if (!nx || !w.syl || !nx.syl) continue;
       const between = text.slice(w.end, nx.start);
@@ -170,7 +199,10 @@
       const ln = nx.text.toLowerCase();
       const endsVowel = isVowelChar(lw.slice(-1)) || (lw.slice(-1) === 'y' && w.nuc.length > 0);
       const startsVowel = isVowelChar(ln[0]) || (ln[0] === 'h' && isVowelChar(ln[1] || '')) || ln === 'y';
-      if (endsVowel && startsVowel) syl--;
+      if (endsVowel && startsVowel) {
+        syl--;
+        merge = true;
+      }
     }
 
     let last = -1;
@@ -180,7 +212,7 @@
         break;
       }
     }
-    return { words, syl: Math.max(syl, 0), seq, last };
+    return { words, syl: Math.max(syl, 0), seq, beats, last };
   }
 
   // Lines that are labels, not lyrics: [Chorus], (x2), # note
@@ -194,7 +226,7 @@
     const raw = text.split('\n');
     const lines = raw.map((t, i) => {
       const label = isLabel(t);
-      const a = label || !t.trim() ? { words: [], syl: 0, seq: [], last: -1 } : analyzeLine(t);
+      const a = label || !t.trim() ? { words: [], syl: 0, seq: [], beats: [], last: -1 } : analyzeLine(t);
       return {
         i,
         text: t,
@@ -203,6 +235,8 @@
         syl: a.syl,
         words: a.words,
         seq: a.seq,
+        beats: a.beats,
+        repeats: [], // { start, end, key, count }: words used again and again
         end: a.last >= 0 ? a.words[a.last] : null,
         endIdx: a.last,
         group: null, // rhyme key shared with nearby lines
@@ -286,7 +320,7 @@
         if (!near.size) continue;
         l.words.forEach((w, wi) => {
           if (wi === l.endIdx || w.syl < 2 || w.asso.length < 2) return;
-          if (STOP.has(w.text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))) return;
+          if (STOP.has(plain(w.text))) return;
           if (!near.has(w.asso)) return;
           const start = w.start + w.nuc[w.stress].pos;
           if (l.ranges.some((r) => start < r.end && w.end > r.start)) return; // already covered
@@ -319,9 +353,41 @@
     }
     lines.forEach((l) => l.ranges.forEach((r) => (r.color = colors.get(r.key))));
 
+    // 6) Repeated words: the same word three or more times in the song, or
+    //    twice almost in a row. Lines repeated whole (a chorus sung twice)
+    //    count once, and filler words don't count at all.
+    const repeated = new Map();
+    {
+      const fold = (w) => {
+        const p = plain(w);
+        return p.length > 4 && p.endsWith('s') ? p.slice(0, -1) : p; // garitos = garito
+      };
+      const seenLines = new Set();
+      const uses = new Map(); // key -> [{ l, w }]
+      for (const l of lyric) {
+        const whole = plain(l.text).replace(/[^a-z0-9ñ]+/g, ' ').trim();
+        if (seenLines.has(whole)) continue;
+        seenLines.add(whole);
+        for (const w of l.words) {
+          const key = fold(w.text);
+          if (key.length < 4 || STOP.has(key) || STOP.has(plain(w.text)) || UNSTRESSED.has(key)) continue;
+          if (!uses.has(key)) uses.set(key, []);
+          uses.get(key).push({ l, w });
+        }
+      }
+      for (const [key, list] of uses) {
+        if (list.length < 2) continue;
+        const close = list.some((u, i) => i > 0 && u.l.k - list[i - 1].l.k <= 2);
+        if (list.length < 3 && !close) continue;
+        repeated.set(key, list.length);
+        for (const u of list) u.l.repeats.push({ start: u.w.start, end: u.w.end, key, count: list.length });
+      }
+    }
+
     const rhymed = lyric.filter((l) => l.group && l.kind !== 'rep').length;
     return {
       lines,
+      repeated,
       stats: {
         lyricLines: lyric.length,
         rhymed,

@@ -183,17 +183,34 @@ body.gutter { --gut: 64px; }
 .r.ext + .r { border-radius: 0 3px 3px 0; }
 /* rhyme inside the line */
 .r.int {
-  text-decoration: underline dotted rgb(var(--c) / .9);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 5px;
+  border-bottom: 2px dotted rgb(var(--c) / .9);
   background: rgb(var(--c) / calc(.07 * var(--a)));
 }
-/* same word repeated: not really a rhyme */
-.r.rep {
-  text-decoration: underline dashed rgb(var(--c) / .55);
+/* same word at the end of two lines: not really a rhyme */
+.r.rep { border-bottom: 1px dashed rgb(var(--c) / .6); }
+/* a rhyme cut in pieces keeps its rounded corners only on the outside */
+.r.mid-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.r.mid-r { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+/* Repeated words: wavy line, the same for every word so it doesn't fight the rhyme colours */
+.rp {
+  text-decoration: underline wavy rgb(var(--rpc) / .7);
   text-decoration-thickness: 1px;
-  text-underline-offset: 5px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
 }
+.rp.on { text-decoration-color: rgb(var(--rpc)); background: rgb(var(--rpc) / .16); border-radius: 3px; }
+:root { --rpc: 190 90 20; }
+:root[data-theme="dark"] { --rpc: 255 150 70; }
+
+/* Stress pattern: a dot under the vowel of every syllable, big when stressed.
+   The padding only extends the painted area downwards, it doesn't move the text. */
+.sy {
+  padding-bottom: 5px;
+  background: radial-gradient(circle, var(--muted) 0 0.9px, transparent 1.4px) center bottom / 100% 5px no-repeat;
+}
+.sy.st { background-image: radial-gradient(circle, var(--text) 0 2px, transparent 2.6px); }
+
 
 #divider {
   display: none;
@@ -317,5 +334,10 @@ body.loading #rhymeLoading { visibility: visible; animation: spin .7s linear inf
 
 #stUpdate { color: var(--accent); }
 #stSave { opacity: .8; }
+#stInfo { color: rgb(var(--rpc)); }
 :root:not([data-theme="dark"]) #stUpdate { color: var(--accent); }
 #stSave { opacity: .8; }
+#stInfo { color: rgb(var(--rpc)); }
+
+/* ---------- Focus mode: just the text ---------- */
+body.focus #toolbar, body.focus #status { display: none; }

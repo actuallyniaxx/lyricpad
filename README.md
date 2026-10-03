@@ -16,7 +16,9 @@ Write on the left, look up rhymes on the right. Select a word, right-click, **Lo
 - **English and Spanish UI.**
 - Line and word count, adjustable font size, and it remembers your theme, layout and window size.
 - **Rhyme highlighting** as you type: perfect rhymes, assonance, multisyllabic rhymes, internal rhymes and whole lines that rhyme with each other. See [Rhymes and syllables](#rhymes-and-syllables).
-- **Syllable count** for every line, in the margin.
+- **Syllable count** for every line, in the margin, and a **stress pattern** under the text to check the flow.
+- **Repeated word detector**, to catch the word you keep leaning on.
+- **Focus mode**: full screen with nothing but your text.
 - **Autosave and crash recovery**, so a power cut doesn't eat your verse.
 - **Automatic updates** from GitHub Releases.
 
@@ -31,12 +33,14 @@ Lyricpad reads your lyrics while you write and marks what rhymes, with no dictio
 | Faint block right before the rhyme | **Multisyllabic rhyme**: syllables before the stressed one match too. The longer the block, the more syllables rhyme. |
 | Dotted underline | **Internal rhyme**: a word inside a line that shares the sound of a nearby line ending in the same stanza. |
 | Dashed underline | The same word repeated, which isn't really a rhyme. |
+| Wavy underline | **Repeated word**: used three or more times in the song, or twice almost in a row. Put the cursor on it to see every use and the count. A chorus sung twice counts once, and filler words are ignored. |
+| Dots under the text | **Stress pattern**: one dot per spoken syllable, big where the stress falls. Two lines with the same syllable count can flow very differently, and this shows why. |
 | Number in the left margin | **Syllables** in the line as you'd actually say them, merging vowels across words (*garito ese* → *ga-ri-toe-se*). |
 | Letter in the right margin | **Rhyme scheme** of the stanza (A, B, A, B…). `–` means the line doesn't rhyme with anything near it. `≡` means the whole line rhymes with another one. |
 
 Each sound gets its own colour and keeps it through the whole song. Put the cursor on a line and every rhyme that shares its sound lights up. The status bar shows the average syllables per line and how many lines rhyme.
 
-Lines like `[Chorus]`, `(x2)` or `# note` are treated as labels and left out. Everything can be switched off in the **View** menu.
+Lines like `[Chorus]`, `(x2)` or `# note` are treated as labels and left out. Each of these can be switched on and off on its own in the **View** menu.
 
 The analysis follows Spanish spelling and pronunciation rules. On lyrics in other languages the numbers and colours are only a rough guess.
 
@@ -75,7 +79,9 @@ You can check manually with **Help → Check for updates…**, turn automatic ch
 | Toggle dark theme | `Ctrl+T` |
 | Align left / center | `Ctrl+L` / `Ctrl+E` |
 | Font size bigger / smaller / reset | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` |
-| Full screen | `F11` |
+| Toggle stress pattern | `Ctrl+Shift+A` |
+| Toggle repeated words | `Ctrl+Shift+D` |
+| Focus mode (`Esc` to leave) | `F11` |
 
 ## Autosave and recovery
 

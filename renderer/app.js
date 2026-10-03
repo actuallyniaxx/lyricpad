@@ -126,8 +126,10 @@ function loadIntoEditor(content, name) {
 function renderOverlay() {
   const showSyl = settings.showSyllables !== false;
   const showRhy = settings.showRhymes !== false;
+  const showStress = settings.showStress !== false;
+  const showRep = settings.showRepeats !== false;
   body.classList.toggle('gutter', showSyl || showRhy);
-  if (!showSyl && !showRhy) {
+  if (!showSyl && !showRhy && !showStress && !showRep) {
     analysis = null;
     hl.replaceChildren();
     refreshCount();
@@ -139,25 +141,12 @@ function renderOverlay() {
     const div = document.createElement('div');
     div.className = 'ln';
     if (showSyl && l.syl) div.dataset.syl = l.syl;
-    if (showRhy) {
-      if (l.letter) div.dataset.letter = l.letter + (l.full ? ' ≡' : '');
+    if (showRhy && l.letter) {
+      div.dataset.letter = l.letter + (l.full ? ' ≡' : '');
       const endRange = l.ranges.find((r) => r.cls !== 'int' && r.cls !== 'ext');
       if (endRange) div.classList.add(`c${endRange.color}`);
-      let pos = 0;
-      for (const r of l.ranges) {
-        if (r.start < pos) continue;
-        if (r.start > pos) div.append(l.text.slice(pos, r.start));
-        const span = document.createElement('span');
-        span.className = `r ${r.cls} c${r.color}`;
-        span.dataset.key = r.key;
-        span.textContent = l.text.slice(r.start, r.end);
-        div.append(span);
-        pos = r.end;
-      }
-      if (pos < l.text.length) div.append(l.text.slice(pos));
-    } else if (l.text) {
-      div.append(l.text);
     }
+    fillLine(div, l, showRhy ? l.ranges : [], showRep ? l.repeats : [], showStress ? l.beats : []);
     frag.append(div);
   }
   hl.replaceChildren(frag);
@@ -166,21 +155,84 @@ function renderOverlay() {
   refreshCount();
 }
 
+// Writes one line into the layer. Rhymes and repeated words can overlap
+// (a rhyme usually covers half a word, a repetition the whole word), so the
+// line is cut at every boundary and each piece gets the marks that apply.
+function fillLine(div, l, rhymes, repeats, beats) {
+  const text = l.text;
+  if (!text) return;
+  const cuts = new Set([0, text.length]);
+  for (const r of rhymes) cuts.add(r.start).add(r.end);
+  for (const r of repeats) cuts.add(r.start).add(r.end);
+  const points = [...cuts].sort((a, b) => a - b);
+  let bi = 0; // next syllable dot to place
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const rhyme = rhymes.find((r) => a >= r.start && a < r.end);
+    const repeat = repeats.find((r) => a >= r.start && a < r.end);
+    let box = div;
+    if (rhyme || repeat) {
+      box = document.createElement('span');
+      if (rhyme) {
+        box.className = `r ${rhyme.cls} c${rhyme.color}`;
+        box.dataset.key = rhyme.key;
+        // keep the rounded ends on the outside when a rhyme is cut in two
+        if (a > rhyme.start) box.classList.add('mid-l');
+        if (b < rhyme.end) box.classList.add('mid-r');
+      }
+      if (repeat) {
+        box.classList.add('rp');
+        box.dataset.word = repeat.key;
+      }
+      div.append(box);
+    }
+    // Syllable dots: each one hangs under its vowel
+    let pos = a;
+    while (bi < beats.length && beats[bi].at < b) {
+      const at = beats[bi].at;
+      if (at >= pos) {
+        if (at > pos) box.append(text.slice(pos, at));
+        const dot = document.createElement('span');
+        dot.className = beats[bi].stressed ? 'sy st' : 'sy';
+        dot.textContent = text[at];
+        box.append(dot);
+        pos = at + 1;
+      }
+      bi++;
+    }
+    if (pos < b) box.append(text.slice(pos, b));
+  }
+}
+
 function syncScroll() {
   hl.style.transform = `translateY(${-editor.scrollTop}px)`;
 }
 
 // Light up every rhyme that shares its sound with the line the cursor is on
-let activeKey = null;
 function markActive() {
-  if (!analysis) return;
-  const lineNo = editor.value.slice(0, editor.selectionStart).split('\n').length - 1;
-  const key = analysis.lines[lineNo]?.group || null;
-  if (key === activeKey && !hl.querySelector('.r.on') === !key) return;
-  activeKey = key;
+  if (!analysis) {
+    $('#stInfo').textContent = '';
+    return;
+  }
+  const caret = editor.selectionStart;
+  const before = editor.value.slice(0, caret);
+  const lineNo = before.split('\n').length - 1;
+  const col = caret - (before.lastIndexOf('\n') + 1);
+  const line = analysis.lines[lineNo];
+
+  const key = line?.group || null;
   hl.querySelectorAll('.r.on').forEach((el) => el.classList.remove('on'));
   if (key) hl.querySelectorAll('.r').forEach((el) => el.dataset.key === key && el.classList.add('on'));
+
+  // Repeated word under the cursor: light up every use and say how many
+  const rp = settings.showRepeats !== false ? line?.repeats.find((r) => col >= r.start && col <= r.end) : null;
+  hl.querySelectorAll('.rp.on').forEach((el) => el.classList.remove('on'));
+  if (rp) hl.querySelectorAll('.rp').forEach((el) => el.dataset.word === rp.key && el.classList.add('on'));
+  $('#stInfo').textContent = rp ? `«${line.text.slice(rp.start, rp.end)}» ×${rp.count}` : '';
 }
+
 
 // Palabra bajo el cursor (la usa el menú contextual si no hay selección)
 window.__wordAtCaret = () => {
@@ -366,6 +418,30 @@ function lastWord(text) {
     patchSettings({ splitRatio: 0.55 });
   });
 })();
+
+// ---------- Focus mode ----------
+// Full screen with nothing but the text. The rhymes panel is closed on the
+// way in and put back on the way out (it can still be opened while inside).
+let panelBeforeFocus = false;
+function applyFocus(on) {
+  if (on === body.classList.contains('focus')) return;
+  if (on) {
+    panelBeforeFocus = body.classList.contains('rhymes');
+    body.classList.remove('rhymes');
+    body.classList.add('focus');
+    toast(t('focusHint'));
+  } else {
+    body.classList.remove('focus');
+    body.classList.toggle('rhymes', panelBeforeFocus);
+    if (panelBeforeFocus) ensureWebview();
+  }
+  document.querySelector('#toolbar [data-action="rhymes"]').classList.toggle('on', body.classList.contains('rhymes'));
+  editor.focus();
+}
+window.api.onFocusMode((on) => applyFocus(on));
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && body.classList.contains('focus') && $('#modal').hidden) window.api.setFocusMode(false);
+});
 
 // ---------- URL personalizada ----------
 function openCustomUrlModal() {

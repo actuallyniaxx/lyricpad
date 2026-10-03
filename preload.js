@@ -27,5 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   onRequestClose: (cb) => ipcRenderer.on('request-close', () => cb()),
   onLang: (cb) => ipcRenderer.on('lang', (_e, lang, strings) => cb(lang, strings)),
   onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, text) => cb(text)),
+  setFocusMode: (on) => ipcRenderer.invoke('focus:set', on),
+  onFocusMode: (cb) => ipcRenderer.on('focus', (_e, on) => cb(on)),
   onOpenPath: (cb) => ipcRenderer.on('open-path', (_e, p) => cb(p)),
 });

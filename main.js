@@ -31,6 +31,8 @@ const defaults = {
   showSyllables: true,
   showRhymes: true,
   internalRhymes: true,
+  showStress: true,
+  showRepeats: true,
 };
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...defaults };
@@ -148,6 +150,8 @@ function createWindow() {
       win.webContents.send('request-close');
     }
   });
+  // Leaving full screen any other way also leaves focus mode
+  win.on('leave-full-screen', () => setFocusMode(false));
   win.on('closed', () => (win = null));
 
   buildMenu();
@@ -246,6 +250,20 @@ function buildMenu() {
           enabled: settings.showRhymes !== false,
           click: () => send('toggleSetting', 'internalRhymes'),
         },
+        {
+          label: t('mStress'),
+          type: 'checkbox',
+          checked: settings.showStress !== false,
+          accelerator: 'CmdOrCtrl+Shift+A',
+          click: () => send('toggleSetting', 'showStress'),
+        },
+        {
+          label: t('mRepeats'),
+          type: 'checkbox',
+          checked: settings.showRepeats !== false,
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => send('toggleSetting', 'showRepeats'),
+        },
         { type: 'separator' },
         {
           label: t('mRhymePanel'),
@@ -279,7 +297,7 @@ function buildMenu() {
         { label: t('mSmaller'), accelerator: 'CmdOrCtrl+-', click: () => send('fontSmaller') },
         { label: t('mResetSize'), accelerator: 'CmdOrCtrl+0', click: () => send('fontReset') },
         { type: 'separator' },
-        { label: t('mFullscreen'), role: 'togglefullscreen', accelerator: 'F11' },
+        { label: t('mFocus'), type: 'checkbox', checked: focusMode, accelerator: 'F11', click: () => setFocusMode(!focusMode) },
         { label: 'DevTools', role: 'toggleDevTools', accelerator: 'CmdOrCtrl+Shift+I', visible: false },
       ],
     },
@@ -304,6 +322,19 @@ function buildMenu() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+
+// ---------- Focus mode ----------
+// Full screen, no menu bar, no toolbars. F11 toggles it, Esc leaves it.
+let focusMode = false;
+function setFocusMode(on) {
+  if (!win || on === focusMode) return;
+  focusMode = on;
+  win.setFullScreen(on);
+  win.setMenuBarVisibility(!on); // shortcuts keep working with the bar hidden
+  win.webContents.send('focus', on);
+  buildMenu();
+}
+ipcMain.handle('focus:set', (_e, on) => setFocusMode(!!on));
 
 function showAbout() {
   dialog.showMessageBox(win, {
@@ -335,7 +366,7 @@ ipcMain.handle('settings:get', () => ({
 
 ipcMain.handle('settings:set', (_e, patch) => {
   const menuRelevant = [
-    'theme', 'align', 'rhymesOpen', 'rhymeUrl', 'autosave', 'showSyllables', 'showRhymes', 'internalRhymes',
+    'theme', 'align', 'rhymesOpen', 'rhymeUrl', 'autosave', 'showSyllables', 'showRhymes', 'internalRhymes', 'showStress', 'showRepeats',
   ].some(
     (k) => k in patch && patch[k] !== settings[k]
   );
